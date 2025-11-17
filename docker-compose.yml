@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ./ollama_data:/root/.ollama
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+  orchestrator:
+    build:
+      context: .
+      dockerfile: cmd/agent-orchestrator/Dockerfile
+    depends_on:
+      # - ollama
+      - vision-agent
+      - http-tools
+    environment:
+      LOG_LEVEL: info
+    command:
+      # Upstream model served by Ollama or other provider.
+      - "--model"
+      - "${ORCHESTRATOR_MODEL}"
+      # Name exposed to AnythingLLM/OpenWebUI.
+      - "--api-model"
+      - "${ORCHESTRATOR_API_MODEL}"
+      - "--base-url"
+      - "${ORCHESTRATOR_BASE_URL}"
+      - "--api-key"
+      - "${ORCHESTRATOR_API_KEY}"
+      - "--advertise"
+      - "--port"
+      - "${ORCHESTRATOR_PORT}"
+      - "--instance"
+      - "${ORCHESTRATOR_INSTANCE}"
+      - "--description"
+      - "${ORCHESTRATOR_DESCRIPTION}"
+    expose:
+      - "${ORCHESTRATOR_PORT}"
+    networks:
+      - mcpmesh
+
+  child-agent:
+    build:
+      context: .
+      dockerfile: cmd/agent-child/Dockerfile
+    environment:
+      LOG_LEVEL: info
+    command:
+      # Model this child agent wraps.
+      - "--model"
+      - "${CHILD_AGENT_MODEL}"
+      # Friendly name surfaced to the orchestrator and clients.
+      - "--api-model"
+      - "${CHILD_AGENT_API_MODEL}"
+      - "--base-url"
+      - "${CHILD_AGENT_BASE_URL}"
+      - "--api-key"
+      - "${CHILD_AGENT_API_KEY}"
+      - "--port"
+      - "${CHILD_AGENT_PORT}"
+      - "--advertise"
+      - "--instance"
+      - "${CHILD_AGENT_INSTANCE}"
+      - "--description"
+      - "${CHILD_AGENT_DESCRIPTION}"
+    expose:
+      - "${CHILD_AGENT_PORT}"
+    networks:
+      - mcpmesh
+
+  http-tools:
+    build:
+      context: .
+      dockerfile: cmd/mcp-http-tools/Dockerfile
+    command:
+      - "--port"
+      - "${HTTP_TOOLS_PORT}"
+      - "--advertise"
+      - "--instance"
+      - "${HTTP_TOOLS_INSTANCE}"
+      - "--role"
+      - "tool"
+    expose:
+      - "${HTTP_TOOLS_PORT}"
+    networks:
+      - mcpmesh
+
+networks:
+  mcpmesh:
+    driver: bridge
